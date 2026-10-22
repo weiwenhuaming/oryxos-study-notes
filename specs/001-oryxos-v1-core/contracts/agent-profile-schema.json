@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oryxos.io/schemas/agent-profile/v1.json",
+  "title": "OryxOS AGENT.md Frontmatter Schema",
+  "description": "AGENT.md 文件 YAML frontmatter 的 JSON Schema 定义。位置：.oryxos/agents/<name>/AGENT.md。本 schema 定义业务方写 Profile 时所有允许的字段、类型、必填项、约束。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "identity", "provider", "tools"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Agent 名（= 目录名）",
+      "pattern": "^[a-z][a-z0-9-_]{0,62}$",
+      "examples": ["daily-weather", "tech-daily"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Agent 一句话描述（用户可见）",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "identity": {
+      "type": "object",
+      "description": "Agent 身份与人格定义",
+      "additionalProperties": false,
+      "required": ["agent_name", "prompt"],
+      "properties": {
+        "agent_name": {
+          "type": "string",
+          "description": "Agent 内部名（运行时身份）"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "人格/系统提示词；或引用 SOUL.md 的方式",
+          "minLength": 1
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "description": "LLM Provider 配置（按 provider.name 显式映射到 ChatModel Bean）",
+      "additionalProperties": false,
+      "required": ["name", "model"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Provider 名（必须存在于 application.yml 的 providers.* 段）",
+          "enum": ["minimax", "deepseek", "qwen", "kimi", "doubao", "glm", "openai", "anthropic"]
+        },
+        "model": {
+          "type": "string",
+          "description": "模型标识",
+          "examples": ["MiniMax-M3", "deepseek-chat", "qwen-plus", "moonshot-v1-8k"]
+        },
+        "temperature": {
+          "type": "number",
+          "description": "温度参数（可选）",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 1.0
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "description": "Agent 可调用的 Tool 名列表（含内建 + @Tool + MCP 三档）",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "examples": [
+        ["read_file", "write_file", "http_get", "notify_slack"],
+        ["http_get", "save_memory", "recall_memory", "read_file"]
+      ]
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "引用的 MCP Server 列表（核心阶段 zero-code 扩展方式）",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["github-mcp", "weather-mcp"]]
+    },
+    "channels": {
+      "type": "array",
+      "description": "Channel 配置（核心阶段通常空，扩展阶段用于 IM 渠道）",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "bootstrap": {
+      "type": "array",
+      "description": "Bootstrap 文件列表（从 .oryxos/ 加载到 system prompt）",
+      "items": {
+        "type": "string",
+        "enum": ["AGENTS.md", "SOUL.md", "USER.md"]
+      },
+      "default": []
+    },
+    "settings": {
+      "type": "object",
+      "description": "运行时参数",
+      "additionalProperties": false,
+      "properties": {
+        "max_iterations": {
+          "type": "integer",
+          "description": "ReAct 最大迭代次数（防止 tool 调用死循环）",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 10
+        },
+        "max_history_turns": {
+          "type": "integer",
+          "description": "最大对话历史轮数（超出按 LRU 截断）",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      }
+    },
+    "schedules": {
+      "type": "array",
+      "description": "cron 表达式列表（定时触发；FR-014~017）",
+      "items": {
+        "type": "string",
+        "description": "标准 5 字段 cron 表达式（minute hour day-of-month month day-of-week）"
+      },
+      "examples": [["0 8 * * *"], ["0 9 * * 1-5"]]
+    },
+    "notify_channels": {
+      "type": "array",
+      "description": "Agent 完成任务时推送的渠道名（引用全局 notify_channels 表的 name，不是硬编码配置）",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "examples": [
+    {
+      "name": "daily-weather",
+      "description": "每日天气推送",
+      "identity": {
+        "agent_name": "WeatherBot",
+        "prompt": "你是 WeatherBot，每天早上 8 点向用户推送指定城市的天气。"
+      },
+      "provider": {
+        "name": "minimax",
+        "model": "MiniMax-M3",
+        "temperature": 0.7
+      },
+      "tools": ["http_get", "notify_slack"],
+      "settings": {
+        "max_iterations": 10,
+        "max_history_turns": 20
+      },
+      "schedules": ["0 8 * * *"],
+      "notify_channels": ["ops-slack"]
+    }
+  ]
+}

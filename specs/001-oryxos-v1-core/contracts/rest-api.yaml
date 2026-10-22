@@ -1,0 +1,424 @@
+openapi: 3.0.3
+info:
+  title: OryxOS Web Service API
+  description: |
+    OryxOS v1.0 核心阶段对外 REST API。
+    对应 spec FR-036（10 个端点）+ FR-037（三入口统一走 AgentService）。
+    业务系统通过 HTTP 集成 OryxOS 所有能力；核心阶段无认证（假设内网）。
+  version: 1.0.0
+  contact:
+    name: OryxOS Team
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地默认端口
+
+tags:
+  - name: Session
+    description: 会话管理（4 个端点）
+  - name: Agent
+    description: Agent 调用（1 个端点）
+  - name: Profile
+    description: Profile 信息查询（1 个端点）
+  - name: Memory
+    description: 长期记忆操作（1 个端点）
+  - name: Tool
+    description: Tool 信息查询（1 个端点）
+  - name: System
+    description: 系统状态（2 个端点）
+
+paths:
+  # ============ Session 管理（4 个）============
+
+  /sessions:
+    post:
+      tags: [Session]
+      summary: 创建新会话
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: 会话创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /sessions/{sessionId}/messages:
+    post:
+      tags: [Session]
+      summary: 向会话发消息（触发 Agent 处理）
+      operationId: sendMessage
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Agent 处理完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '408':
+          description: Agent 处理超时
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sessions/{sessionId}:
+    get:
+      tags: [Session]
+      summary: 查询会话详情（含完整对话历史）
+      operationId: getSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 会话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Session]
+      summary: 归档会话（标记 archived，可查询但不活跃）
+      operationId: archiveSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: 归档成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============ Agent 调用（1 个）============
+
+  /agents/{name}/invoke:
+    post:
+      tags: [Agent]
+      summary: 无状态调用 Agent（不创建 Session）
+      operationId: invokeAgent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Agent 名（= .oryxos/agents/<name>/）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvokeRequest'
+      responses:
+        '200':
+          description: Agent 处理完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '404':
+          description: Agent 不存在
+
+  # ============ Profile 信息查询（1 个）============
+
+  /profiles:
+    get:
+      tags: [Profile]
+      summary: 列出所有 Profile（活跃 Agent）
+      operationId: listProfiles
+      responses:
+        '200':
+          description: Profile 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileSummary'
+
+  # ============ Memory 操作（1 个）============
+
+  /memory:
+    get:
+      tags: [Memory]
+      summary: 查询全局长期记忆内容
+      operationId: getMemory
+      responses:
+        '200':
+          description: MEMORY.md 内容（按分区返回）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryContent'
+
+  # ============ Tool 信息查询（1 个）============
+
+  /tools:
+    get:
+      tags: [Tool]
+      summary: 列出所有已注册 Tool（含内建 / @Tool / MCP）
+      operationId: listTools
+      responses:
+        '200':
+          description: Tool 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolInfo'
+
+  # ============ 系统状态（2 个）============
+
+  /health:
+    get:
+      tags: [System]
+      summary: 健康检查
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 健康
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: 不健康
+
+  /info:
+    get:
+      tags: [System]
+      summary: 运行信息（版本、Provider 列表、Agent 数量等）
+      operationId: getInfo
+      responses:
+        '200':
+          description: 运行信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeInfo'
+
+# ============================================================
+components:
+
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: 会话 ID（channel + user + profile 联合生成）
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: 内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required: [profile, channel, user_id]
+      properties:
+        profile:
+          type: string
+          description: Profile 名
+        channel:
+          type: string
+          enum: [cli, web, cron]
+        user_id:
+          type: string
+          description: 用户标识
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: 消息内容
+
+    InvokeRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+        profile:
+          type: string
+        channel:
+          type: string
+        user_id:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+
+    SessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+
+    Message:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        content:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            type: object
+            properties:
+              tool_name:
+                type: string
+              input:
+                type: object
+              result:
+                type: object
+
+    AgentResponse:
+      type: object
+      properties:
+        content:
+          type: string
+          description: Agent 最终响应
+        tool_calls:
+          type: array
+          description: Agent 在本次响应中调用的 Tool 列表（审计可见）
+        iterations:
+          type: integer
+          description: ReAct 循环迭代次数
+
+    ProfileSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+
+    MemoryContent:
+      type: object
+      properties:
+        core_memory:
+          type: string
+          description: ## 核心记忆 区内容
+        archived_memory:
+          type: string
+          description: ## 归档记忆 区内容
+        total_chars:
+          type: integer
+          description: 当前总字数
+
+    ToolInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+          enum: [builtin, annotation, mcp]
+          description: Tool 来源（三档）
+        description:
+          type: string
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+        components:
+          type: object
+          additionalProperties:
+            type: string
+
+    RuntimeInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          example: "1.0.0"
+        providers:
+          type: array
+          items:
+            type: string
+          description: 已配置的 Provider 列表
+        agent_count:
+          type: integer
+        active_session_count:
+          type: integer
+        uptime_seconds:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "session_not_found"
+        message:
+          type: string
+        request_id:
+          type: string
+          description: 请求 trace ID（用于审计关联）

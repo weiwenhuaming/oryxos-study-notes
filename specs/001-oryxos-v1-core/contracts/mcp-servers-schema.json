@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oryxos.io/schemas/mcp-servers/v1.json",
+  "title": "OryxOS mcp_servers.yaml Schema",
+  "description": ".oryxos/mcp_servers.yaml 配置文件的 JSON Schema 定义。MCP server 用于 Plugin Tool 第二档（零代码扩展）。核心阶段仅支持 stdio 模式（FR-030 + FR-049）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["servers"],
+  "properties": {
+    "servers": {
+      "type": "array",
+      "description": "MCP server 配置列表",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/McpServer"
+      }
+    }
+  },
+  "$defs": {
+    "McpServer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "transport"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "MCP server 名（AGENT.md frontmatter 的 mcp_servers 字段按此名引用）",
+          "pattern": "^[a-z][a-z0-9-_]{0,62}$"
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["stdio"],
+          "description": "传输方式。核心阶段仅支持 stdio（FR-030，research D7 决策）"
+        },
+        "command": {
+          "type": "string",
+          "description": "stdio 模式的启动命令（必填）",
+          "examples": ["python", "node", "npx"]
+        },
+        "args": {
+          "type": "array",
+          "description": "stdio 模式的命令行参数",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "env": {
+          "type": "object",
+          "description": "stdio 模式的环境变量（key=value 字面量，或 ${ENV_VAR} 占位引用环境变量）",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "description": "启动连接超时（毫秒；FR-049 默认 3000）",
+          "minimum": 100,
+          "maximum": 30000,
+          "default": 3000
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "是否启用（false 时启动跳过该 server）",
+          "default": true
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "servers": [
+        {
+          "name": "github-mcp",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-github"],
+          "env": {
+            "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+          },
+          "timeout_ms": 3000,
+          "enabled": true
+        },
+        {
+          "name": "weather-mcp",
+          "transport": "stdio",
+          "command": "python",
+          "args": ["-m", "weather_mcp_server"],
+          "env": {
+            "WEATHER_API_KEY": "${WEATHER_API_KEY}"
+          },
+          "timeout_ms": 3000,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
